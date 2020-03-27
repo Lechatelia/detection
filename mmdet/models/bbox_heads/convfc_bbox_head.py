@@ -130,7 +130,7 @@ class ConvFCBBoxHead(BBoxHead):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        # shared part
+        # shared part x[512*bs, 256, 7, 7]
         if self.num_shared_convs > 0:
             for conv in self.shared_convs:
                 x = conv(x)
@@ -141,10 +141,10 @@ class ConvFCBBoxHead(BBoxHead):
 
             x = x.flatten(1)
 
-            for fc in self.shared_fcs:
+            for fc in self.shared_fcs: # 两个全连接网络
                 x = self.relu(fc(x))
         # separate branches
-        x_cls = x
+        x_cls = x # [bs*num_rois, 1024]
         x_reg = x
 
         for conv in self.cls_convs:
@@ -165,8 +165,8 @@ class ConvFCBBoxHead(BBoxHead):
         for fc in self.reg_fcs:
             x_reg = self.relu(fc(x_reg))
 
-        cls_score = self.fc_cls(x_cls) if self.with_cls else None
-        bbox_pred = self.fc_reg(x_reg) if self.with_reg else None
+        cls_score = self.fc_cls(x_cls) if self.with_cls else None #分别进行分类
+        bbox_pred = self.fc_reg(x_reg) if self.with_reg else None # 位置回归
         return cls_score, bbox_pred
 
 

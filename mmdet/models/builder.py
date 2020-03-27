@@ -12,7 +12,7 @@ def build(cfg, registry, default_args=None):
         ]
         return nn.Sequential(*modules)
     else:
-        return build_from_cfg(cfg, registry, default_args)
+        return build_from_cfg(cfg, registry, default_args) #从cfg文件中build module
 
 
 def build_backbone(cfg):

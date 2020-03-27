@@ -163,28 +163,31 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
         Returns:
             dict[str, Tensor]: a dictionary of loss components
         """
-        x = self.extract_feat(img)
+        x = self.extract_feat(img) # backbone 和 neck 阶段 提取特征 由于基本上会用rpn，所以会是一个tuple 里面都是[bs, c, h, w]的特征
 
         losses = dict()
 
-        # RPN forward and loss
+        # RPN forward and loss RPN网络阶段并计算损失
         if self.with_rpn:
-            rpn_outs = self.rpn_head(x)
+            rpn_outs = self.rpn_head(x) # 分别得到分类结果 和 回归结果
             rpn_loss_inputs = rpn_outs + (gt_bboxes, img_meta,
                                           self.train_cfg.rpn)
+            # rpn_head 继承的是anchor——head 可以计算损失
             rpn_losses = self.rpn_head.loss(
-                *rpn_loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)
+                *rpn_loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore) # 得到一个字典 key分别是loss_rpn_cls 和 loss_rpn_bbox
             losses.update(rpn_losses)
 
             proposal_cfg = self.train_cfg.get('rpn_proposal',
-                                              self.test_cfg.rpn)
+                                              self.test_cfg.rpn) #获得proposal的一些配置文件
             proposal_inputs = rpn_outs + (img_meta, proposal_cfg)
-            proposal_list = self.rpn_head.get_bboxes(*proposal_inputs)
+            # 得到 proposal ，并选取NMS-K ROI区域
+            proposal_list = self.rpn_head.get_bboxes(*proposal_inputs) # 每张图片一个list [2000, 5]
         else:
-            proposal_list = proposals
+            proposal_list = proposals #类似于fast rcnn 就会直接得到提取准备的proposals
 
         # assign gts and sample proposals
         if self.with_bbox or self.with_mask:
+            # 区分正负样本并进行采样
             bbox_assigner = build_assigner(self.train_cfg.rcnn.assigner)
             bbox_sampler = build_sampler(
                 self.train_cfg.rcnn.sampler, context=self)
@@ -207,13 +210,13 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
 
         # bbox head forward and loss
         if self.with_bbox:
-            rois = bbox2roi([res.bboxes for res in sampling_results])
+            rois = bbox2roi([res.bboxes for res in sampling_results]) # 主要是给每一个bbox添加图片id 便于roi pooling
             # TODO: a more flexible way to decide which feature maps to use
-            bbox_feats = self.bbox_roi_extractor(
-                x[:self.bbox_roi_extractor.num_inputs], rois)
+            bbox_feats = self.bbox_roi_extractor(  # ROI pooing过程
+                x[:self.bbox_roi_extractor.num_inputs], rois) # [ bs*512, 256, 7, 7]
             if self.with_shared_head:
-                bbox_feats = self.shared_head(bbox_feats)
-            cls_score, bbox_pred = self.bbox_head(bbox_feats)
+                bbox_feats = self.shared_head(bbox_feats)#感觉这里是对特征进行了一个变换过程
+            cls_score, bbox_pred = self.bbox_head(bbox_feats) # 进行refine的head 进行分类和位置的精调
 
             bbox_targets = self.bbox_head.get_target(sampling_results,
                                                      gt_bboxes, gt_labels,
@@ -222,7 +225,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                                             *bbox_targets)
             losses.update(loss_bbox)
 
-        # mask head forward and loss
+        # mask head forward and loss mask-RCNN网络的head部分
         if self.with_mask:
             if not self.share_roi_extractor:
                 pos_rois = bbox2roi(

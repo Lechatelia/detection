@@ -76,4 +76,4 @@ def build_from_cfg(cfg, registry, default_args=None):
     if default_args is not None:
         for name, value in default_args.items():
             args.setdefault(name, value)
-    return obj_cls(**args)
+    return obj_cls(**args) # 构建网络结构或者小模块，传入网络参数
