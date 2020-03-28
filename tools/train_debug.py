@@ -25,7 +25,7 @@ print('the available CUDA number is : {}'.format(torch.cuda.device_count()))
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('--config', default='../configs/faster_rcnn_r50_fpn_1x.py', help='train config file path')
+    parser.add_argument('--config', default='../configs/faster_rcnn_r50_fpn_1x_gcn.py', help='train config file path')
     parser.add_argument('--work_dir', help='the dir to save logs and models')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from')

@@ -16,14 +16,14 @@ from mmdet.datasets import build_dataset
 from mmdet.models import build_detector
 from mmdet.utils import collect_env, get_root_logger
 
-print('CUDA available: {}'.format(torch.cuda.is_available()))
-
-print('the available CUDA number is : {}'.format(torch.cuda.device_count()))
+# print('CUDA available: {}'.format(torch.cuda.is_available()))
+#
+# print('the available CUDA number is : {}'.format(torch.cuda.device_count()))
 # python -m torch.distributed.launch --nproc_per_node=4 --master_port=29500 tools/train_faster.py
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('--config', default='configs/faster_rcnn_r101_fpn_1x.py', help='train config file path')
+    parser.add_argument('--config', default='configs/faster_rcnn_r50_fpn_1x_gcn.py', help='train config file path')
     parser.add_argument('--work_dir', help='the dir to save logs and models')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from')
