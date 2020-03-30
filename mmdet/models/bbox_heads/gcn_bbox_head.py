@@ -28,6 +28,7 @@ class GCNBBoxHead(BBoxHead):
                  norm_cfg=None,
                  nongt_dim=128,
                  num_rois = 256,
+                 dropout = 0.5,
                  *args,
                  **kwargs):
         super(GCNBBoxHead, self).__init__(*args, **kwargs)
@@ -51,6 +52,7 @@ class GCNBBoxHead(BBoxHead):
         self.norm_cfg = norm_cfg
         self.nongt_dim = nongt_dim
         self.num_rois = num_rois
+        self.dropout = dropout
 
         self.relation_module = nn.ModuleList()
         # add shared convs and fcs
@@ -121,8 +123,11 @@ class GCNBBoxHead(BBoxHead):
             for i in range(num_branch_fcs):
                 fc_in_channels = (
                     last_layer_dim if i == 0 else self.fc_out_channels)
-                branch_fcs.append(
-                    nn.Linear(fc_in_channels, self.fc_out_channels))
+                branch_fcs.append( # 添加非线性函数和dropout
+                    nn.Sequential(nn.Linear(fc_in_channels, self.fc_out_channels),
+                                  nn.ReLU())
+                                  # nn.Dropout(self.dropout))
+                    )
                 self.relation_module.append(Relation_Encoder(v_dim=self.fc_out_channels, out_dim=self.fc_out_channels,
                                                    nongt_dim=self.nongt_dim, dir_num=1, pos_emb_dim=64, num_steps=1)
                                    )
@@ -208,6 +213,7 @@ class FCNet(nn.Module):
         if '' != act and act is not None:
             layers.append(getattr(nn, act)())
 
+
         self.main = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -216,7 +222,8 @@ class FCNet(nn.Module):
 
 class GraphSelfAttentionLayer(nn.Module):
     def __init__(self, feat_dim, nongt_dim=20, pos_emb_dim=-1,
-                 num_heads=16, dropout=[0.2, 0.5]):
+                 num_heads=16, dropout=[0.2, 0.2]):
+                 # num_heads=16, dropout=[0.2, 0.5]):
         """ Attetion module with vectorized version
 
         Args:
@@ -241,17 +248,19 @@ class GraphSelfAttentionLayer(nn.Module):
         self.num_heads = num_heads
         self.pos_emb_dim = pos_emb_dim
         if self.pos_emb_dim > 0:
-            self.pair_pos_fc1 = FCNet([pos_emb_dim, self.fc_dim], None, dropout[0])
-        self.query = FCNet([feat_dim, self.dim[0]], None, dropout[0])
+            self.pair_pos_fc1 = FCNet([pos_emb_dim, self.fc_dim], None, dropout[0]) # --16
+        self.query = FCNet([feat_dim, self.dim[0]], None, dropout[1]) # 1024
         self.nongt_dim = nongt_dim
 
-        self.key = FCNet([feat_dim, self.dim[1]], None, dropout[0])
+        self.key = FCNet([feat_dim, self.dim[1]], None, dropout[1])
 
         self.linear_out_ = weight_norm(
                             nn.Conv2d(in_channels=self.fc_dim * feat_dim,
                                       out_channels=self.dim[2],
                                       kernel_size=(1, 1),
                                       groups=self.fc_dim), dim=None) # 每一个num_heads通道之间进行group卷积，
+
+        self.activ = nn.ReLU()
 
     def forward(self, roi_feat, adj_matrix,
                 position_embedding, label_biases_att):
@@ -363,12 +372,14 @@ class GraphSelfAttentionLayer(nn.Module):
         # linear_out, [batch_size*num_rois, dim[2], 1, 1]
         linear_out = self.linear_out_(output_t) # 利用二维卷积的group卷积操作实现不同heads的信息聚合
         output = linear_out.view((batch_size, num_rois, self.dim[2])) #[bs, num_roi, feat_dim]
-        return output
+        # todo add relu function
+
+        return self.activ(output)
 
 
 class GAttNet(nn.Module):
     def __init__(self, dir_num, label_num, in_feat_dim, out_feat_dim,
-                 nongt_dim=20, dropout=0.5, label_bias=True,
+                 nongt_dim=20, dropout=0.7, label_bias=True,
                  num_heads=16, pos_emb_dim=-1):
         """ Attetion module with vectorized version
 
@@ -563,9 +574,9 @@ class Relation_Encoder(nn.Module):
             output: [batch_size, num_rois, out_dim,3]
         """
         # [batch_size, num_rois, num_rois, 1]
-        # imp_adj_mat = Variable(torch.ones(v.size(0), v.size(1), v.size(1), 1)).to(v.device)
+        imp_adj_mat = Variable(torch.ones(v.size(0), v.size(1), v.size(1), 1)).to(v.device)
         # 全1矩阵 [batch_szie, 256, 256, 1]     其实并没有什么意义 所以这里改成 by zjg 20200314
-        imp_adj_mat = None
+        # imp_adj_mat = None
 
         imp_v = self.v_transform(v) if self.v_transform else v  # 先检查特征维度
 
@@ -584,11 +595,11 @@ def prepare_graph_variables(bb, nongt_dim, device, pos_emb_dim=64):
     # bbox: [batch_size, num_boxes, 4]
     # pos_emd_dim position_embedding_dim:
 
-    bb = bb.to(device)  # [batch_size, num_boxes, 4]
+    # bb = bb  # [batch_size, num_boxes, 4]
     pos_mat = torch_extract_position_matrix(bb, nongt_dim=nongt_dim)  # [batch_size, num_boxes, nongt_dim, 4]
     pos_emb = torch_extract_position_embedding(pos_mat, feat_dim=pos_emb_dim, device=device)
     # position embedding, [batch_size,num_rois, nongt_dim, feat_dim]
-    pos_emb_var = Variable(pos_emb).to(device)
+    pos_emb_var = Variable(pos_emb)
     return pos_emb_var
 
 
