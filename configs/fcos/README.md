@@ -31,3 +31,5 @@
 **Notes:**
 - To be consistent with the author's implementation, we use 4 GPUs with 4 images/GPU for R-50 and R-101 models, and 8 GPUs with 2 image/GPU for X-101 models.
 - The X-101 backbone is X-101-64x4d.
+- GN represents group normalization
+- Ms train should be multiscale, I guess.

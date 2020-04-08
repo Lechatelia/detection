@@ -44,8 +44,8 @@ class SingleStageDetector(BaseDetector):
     def extract_feat(self, img):
         """Directly extract features from the backbone+neck
         """
-        x = self.backbone(img)
-        if self.with_neck:
+        x = self.backbone(img) # eg: resnet
+        if self.with_neck: # eg: FPN
             x = self.neck(x)
         return x
 
@@ -64,8 +64,8 @@ class SingleStageDetector(BaseDetector):
                       gt_bboxes,
                       gt_labels,
                       gt_bboxes_ignore=None):
-        x = self.extract_feat(img)
-        outs = self.bbox_head(x)
+        x = self.extract_feat(img) # tuple of feature map
+        outs = self.bbox_head(x) # anchor head --> regress from feature map
         loss_inputs = outs + (gt_bboxes, gt_labels, img_metas, self.train_cfg)
         losses = self.bbox_head.loss(
             *loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)

@@ -23,7 +23,9 @@ from mmdet.utils import collect_env, get_root_logger
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('--config', default='configs/faster_rcnn_r50_fpn_1x_gcn.py', help='train config file path')
+    # parser.add_argument('--config', default='configs/faster_rcnn_r50_fpn_1x_gcn.py', help='train config file path')
+    # parser.add_argument('--config', default='configs/pascal_voc/faster_rcnn_r50_fpn_1x_voc0712.py', help='train config file path')
+    parser.add_argument('--config', default='configs/fcos/fcos_r50_caffe_fpn_gn_1x_4gpu.py', help='train config file path')
     parser.add_argument('--work_dir', help='the dir to save logs and models')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from')

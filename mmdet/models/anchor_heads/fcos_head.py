@@ -58,7 +58,7 @@ class FCOSHead(nn.Module):
         self.feat_channels = feat_channels
         self.stacked_convs = stacked_convs
         self.strides = strides
-        self.regress_ranges = regress_ranges
+        self.regress_ranges = regress_ranges # 分别指定每一层的回归尺度
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
         self.loss_centerness = build_loss(loss_centerness)
@@ -138,14 +138,14 @@ class FCOSHead(nn.Module):
              gt_labels,
              img_metas,
              cfg,
-             gt_bboxes_ignore=None):
+             gt_bboxes_ignore=None): # fcos 损失函数计算
         assert len(cls_scores) == len(bbox_preds) == len(centernesses)
-        featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
-        all_level_points = self.get_points(featmap_sizes, bbox_preds[0].dtype,
-                                           bbox_preds[0].device)
+        featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores] # 由于采取的是FPN，特征图有五个大小 不同的 H W
+        all_level_points = self.get_points(featmap_sizes, bbox_preds[0].dtype, # 将 feature map上面的每一个location对应原图中的投影位置找到，
+                                           bbox_preds[0].device) #  """Get points according to feature map sizes.
         labels, bbox_targets = self.fcos_target(all_level_points, gt_bboxes,
                                                 gt_labels)
-
+        # 输出的labels bbox——targets本身就是flatten形式的 对于每一层的gt 都是[bs*l*h] [bs*l*h， 4]
         num_imgs = cls_scores[0].size(0)
         # flatten cls_scores, bbox_preds and centerness
         flatten_cls_scores = [
@@ -160,33 +160,33 @@ class FCOSHead(nn.Module):
             centerness.permute(0, 2, 3, 1).reshape(-1)
             for centerness in centernesses
         ]
-        flatten_cls_scores = torch.cat(flatten_cls_scores)
+        flatten_cls_scores = torch.cat(flatten_cls_scores) # 不同level的预测值也进行cat
         flatten_bbox_preds = torch.cat(flatten_bbox_preds)
         flatten_centerness = torch.cat(flatten_centerness)
-        flatten_labels = torch.cat(labels)
+        flatten_labels = torch.cat(labels) # 不同level的gt也进行cat
         flatten_bbox_targets = torch.cat(bbox_targets)
         # repeat points to align with bbox_preds
-        flatten_points = torch.cat(
+        flatten_points = torch.cat( # 先给points扩充bs维度，然后把不同level的points也cat
             [points.repeat(num_imgs, 1) for points in all_level_points])
 
-        pos_inds = flatten_labels.nonzero().reshape(-1)
+        pos_inds = flatten_labels.nonzero().reshape(-1) #正样本
         num_pos = len(pos_inds)
-        loss_cls = self.loss_cls(
+        loss_cls = self.loss_cls( # 计算分类loss
             flatten_cls_scores, flatten_labels,
             avg_factor=num_pos + num_imgs)  # avoid num_pos is 0
 
-        pos_bbox_preds = flatten_bbox_preds[pos_inds]
+        pos_bbox_preds = flatten_bbox_preds[pos_inds] # 得到正样本的回归值
         pos_centerness = flatten_centerness[pos_inds]
 
         if num_pos > 0:
             pos_bbox_targets = flatten_bbox_targets[pos_inds]
-            pos_centerness_targets = self.centerness_target(pos_bbox_targets)
+            pos_centerness_targets = self.centerness_target(pos_bbox_targets) # 计算centerness的真值
             pos_points = flatten_points[pos_inds]
             pos_decoded_bbox_preds = distance2bbox(pos_points, pos_bbox_preds)
             pos_decoded_target_preds = distance2bbox(pos_points,
                                                      pos_bbox_targets)
             # centerness weighted iou loss
-            loss_bbox = self.loss_bbox(
+            loss_bbox = self.loss_bbox( # 计算回归 loss
                 pos_decoded_bbox_preds,
                 pos_decoded_target_preds,
                 weight=pos_centerness_targets,
@@ -315,17 +315,17 @@ class FCOSHead(nn.Module):
         return points
 
     def fcos_target(self, points, gt_bboxes_list, gt_labels_list):
-        assert len(points) == len(self.regress_ranges)
-        num_levels = len(points)
-        # expand regress ranges to align with points
+        assert len(points) == len(self.regress_ranges) # 每一个特征层都有自己负责需要预测的尺度信息
+        num_levels = len(points) # 特征层层数
+        # expand regress ranges to align with points # 回归尺度范围添加到每一个点
         expanded_regress_ranges = [
             points[i].new_tensor(self.regress_ranges[i])[None].expand_as(
                 points[i]) for i in range(num_levels)
         ]
         # concat all levels points and regress ranges
-        concat_regress_ranges = torch.cat(expanded_regress_ranges, dim=0)
-        concat_points = torch.cat(points, dim=0)
-        # get labels and bbox_targets of each image
+        concat_regress_ranges = torch.cat(expanded_regress_ranges, dim=0) # [num_points, 2] 这个点的数目包括所有尺度的点 每一个点的回归尺度范围
+        concat_points = torch.cat(points, dim=0) # [num_points, 2] 每一个点在原图中所代表的位置
+        # get labels and bbox_targets of each image 分图片计算ground truth [num_points] [num_points, 4]
         labels_list, bbox_targets_list = multi_apply(
             self.fcos_target_single,
             gt_bboxes_list,
@@ -334,8 +334,8 @@ class FCOSHead(nn.Module):
             regress_ranges=concat_regress_ranges)
 
         # split to per img, per level
-        num_points = [center.size(0) for center in points]
-        labels_list = [labels.split(num_points, 0) for labels in labels_list]
+        num_points = [center.size(0) for center in points] # 每一个特征层的points数量
+        labels_list = [labels.split(num_points, 0) for labels in labels_list] # 按照 feature level 分开
         bbox_targets_list = [
             bbox_targets.split(num_points, 0)
             for bbox_targets in bbox_targets_list
@@ -344,7 +344,7 @@ class FCOSHead(nn.Module):
         # concat per level image
         concat_lvl_labels = []
         concat_lvl_bbox_targets = []
-        for i in range(num_levels):
+        for i in range(num_levels): # 在每一层把不同image的gt拼接，构成batch维度
             concat_lvl_labels.append(
                 torch.cat([labels[i] for labels in labels_list]))
             concat_lvl_bbox_targets.append(
@@ -353,48 +353,50 @@ class FCOSHead(nn.Module):
         return concat_lvl_labels, concat_lvl_bbox_targets
 
     def fcos_target_single(self, gt_bboxes, gt_labels, points, regress_ranges):
-        num_points = points.size(0)
+        # gt_bboxes [num_gt, 4] gt_labels [num_gt]
+        # points regress_ranges [num_points, 2]  特征层上面每一个点的位置以及其能够允许预测的尺度范围
+        num_points = points.size(0) # 为每一个位置计算label 和bbox的真值
         num_gts = gt_labels.size(0)
         if num_gts == 0:
             return gt_labels.new_zeros(num_points), \
                    gt_bboxes.new_zeros((num_points, 4))
 
         areas = (gt_bboxes[:, 2] - gt_bboxes[:, 0] + 1) * (
-            gt_bboxes[:, 3] - gt_bboxes[:, 1] + 1)
+            gt_bboxes[:, 3] - gt_bboxes[:, 1] + 1) # [num_points, num_gts]
         # TODO: figure out why these two are different
         # areas = areas[None].expand(num_points, num_gts)
-        areas = areas[None].repeat(num_points, 1)
+        areas = areas[None].repeat(num_points, 1) # [num_points, num_gts]
         regress_ranges = regress_ranges[:, None, :].expand(
-            num_points, num_gts, 2)
-        gt_bboxes = gt_bboxes[None].expand(num_points, num_gts, 4)
+            num_points, num_gts, 2) # [num_points, num_gts, 2]
+        gt_bboxes = gt_bboxes[None].expand(num_points, num_gts, 4) # [num_points, num_gts, 4]
         xs, ys = points[:, 0], points[:, 1]
-        xs = xs[:, None].expand(num_points, num_gts)
-        ys = ys[:, None].expand(num_points, num_gts)
+        xs = xs[:, None].expand(num_points, num_gts) # [num_points, num_gts]
+        ys = ys[:, None].expand(num_points, num_gts) # [num_points, num_gts]
 
-        left = xs - gt_bboxes[..., 0]
+        left = xs - gt_bboxes[..., 0] # 先不加区别生成回归目标 [num_points, num_gts] 先假设一个点能够预测很多个box
         right = gt_bboxes[..., 2] - xs
         top = ys - gt_bboxes[..., 1]
         bottom = gt_bboxes[..., 3] - ys
-        bbox_targets = torch.stack((left, top, right, bottom), -1)
+        bbox_targets = torch.stack((left, top, right, bottom), -1) # [num_points, num_gts,4]
 
-        # condition1: inside a gt bbox
-        inside_gt_bbox_mask = bbox_targets.min(-1)[0] > 0
+        # condition1: inside a gt bbox #都大于0才是在box中间的点
+        inside_gt_bbox_mask = bbox_targets.min(-1)[0] > 0 # [num_points, num_gts]
 
-        # condition2: limit the regression range for each location
+        # condition2: limit the regression range for each location #
         max_regress_distance = bbox_targets.max(-1)[0]
         inside_regress_range = (
             max_regress_distance >= regress_ranges[..., 0]) & (
-                max_regress_distance <= regress_ranges[..., 1])
+                max_regress_distance <= regress_ranges[..., 1]) # [num_points, num_gts]
 
         # if there are still more than one objects for a location,
         # we choose the one with minimal area
-        areas[inside_gt_bbox_mask == 0] = INF
+        areas[inside_gt_bbox_mask == 0] = INF # 如果不负责回归任务就认为负责的box面积无穷大
         areas[inside_regress_range == 0] = INF
-        min_area, min_area_inds = areas.min(dim=1)
+        min_area, min_area_inds = areas.min(dim=1) # 选择那个最小面积的gt作为自己的回归目标 [num_points]
 
         labels = gt_labels[min_area_inds]
-        labels[min_area == INF] = 0
-        bbox_targets = bbox_targets[range(num_points), min_area_inds]
+        labels[min_area == INF] = 0 # [num_points]
+        bbox_targets = bbox_targets[range(num_points), min_area_inds] # # [num_points， 4]为每一个points选择面积最小的那个目标，如果area=inf实际上就是先占位
 
         return labels, bbox_targets
 
@@ -403,6 +405,6 @@ class FCOSHead(nn.Module):
         left_right = pos_bbox_targets[:, [0, 2]]
         top_bottom = pos_bbox_targets[:, [1, 3]]
         centerness_targets = (
-            left_right.min(dim=-1)[0] / left_right.max(dim=-1)[0]) * (
+            left_right.min(dim=-1)[0] / left_right.max(dim=-1)[0]) * ( # min max 返回的第一个是min value第二个是 min indices
                 top_bottom.min(dim=-1)[0] / top_bottom.max(dim=-1)[0])
         return torch.sqrt(centerness_targets)

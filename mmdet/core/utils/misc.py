@@ -19,8 +19,8 @@ def tensor2imgs(tensor, mean=(0, 0, 0), std=(1, 1, 1), to_rgb=True):
 
 
 def multi_apply(func, *args, **kwargs):
-    pfunc = partial(func, **kwargs) if kwargs else func
-    map_results = map(pfunc, *args)
+    pfunc = partial(func, **kwargs) if kwargs else func #kwargs 共用的参数
+    map_results = map(pfunc, *args) # list 参数，分别传入字典中
     return tuple(map(list, zip(*map_results)))
 
 
