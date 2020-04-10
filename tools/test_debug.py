@@ -6,6 +6,7 @@ import torch
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 import os
 from mmcv.runner import get_dist_info, init_dist, load_checkpoint
+from tools.fuse_conv_bn import fuse_module
 from mmdet.apis import multi_gpu_test, single_gpu_test
 from mmdet.core import wrap_fp16_model
 from mmdet.datasets import build_dataloader, build_dataset
@@ -61,10 +62,16 @@ class MultipleKVAction(argparse.Action):
 def parse_args():
     parser = argparse.ArgumentParser(
         description='MMDet test (and eval) a model')
-    parser.add_argument('--config', default='../configs/faster_rcnn_r50_fpn_1x_gcn.py', type=str, help='test config file path')
-    parser.add_argument('--checkpoint', default='../work_dirs/faster_rcnn_r50_fpn_1x_gcn/epoch_1.pth', type=str, help='checkpoint file')
+    parser.add_argument('--config', default='../configs/fcos/fcos_r50_caffe_fpn_gn_1x_4gpu.py', type=str, help='test config file path')
+    # parser.add_argument('--config', default='../configs/faster_rcnn_r50_fpn_1x_gcn.py', type=str, help='test config file path')
+    parser.add_argument('--checkpoint', default='../work_dirs/fcos_r50_caffe_fpn_gn_1x_4gpu/epoch_12.pth', type=str, help='checkpoint file')
     # parser.add_argument('--checkpoint', default='../checkpoints/faster_rcnn_r50_fpn_1x_20181010-3d1b3351.pth', type=str, help='checkpoint file')
     parser.add_argument('--out', help='output result file in pickle format')
+    parser.add_argument(
+        '--fuse_conv_bn',
+        default=True, type=bool,
+        help='Whether to fuse conv and bn, this will slightly increase'
+        'the inference speed')
     parser.add_argument(
         '--format_only',
         action='store_true',
@@ -148,6 +155,8 @@ def main():
     if fp16_cfg is not None:
         wrap_fp16_model(model)
     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
+    if args.fuse_conv_bn:
+        model = fuse_module(model)
     # old versions did not save class info in checkpoints, this walkaround is
     # for backward compatibility
     if 'CLASSES' in checkpoint['meta']:

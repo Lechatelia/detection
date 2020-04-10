@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from ..registry import HEADS
-from ..utils import ConvModule
+from mmdet.ops import ConvModule
 from .bbox_head import BBoxHead
 
 

@@ -12,9 +12,9 @@ from mmdet.apis import multi_gpu_test, single_gpu_test
 from mmdet.core import wrap_fp16_model
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
-print('CUDA available: {}'.format(torch.cuda.is_available()))
-
-print('the available CUDA number is : {}'.format(torch.cuda.device_count()))
+# print('CUDA available: {}'.format(torch.cuda.is_available()))
+#
+# print('the available CUDA number is : {}'.format(torch.cuda.device_count()))
 # python -m torch.distributed.launch --nproc_per_node=4 --master_port=29500 tools/test.py
 class MultipleKVAction(argparse.Action):
     """
@@ -50,13 +50,14 @@ class MultipleKVAction(argparse.Action):
 def parse_args():
     parser = argparse.ArgumentParser(
         description='MMDet test (and eval) a model')
-    parser.add_argument('--config', default='configs/faster_rcnn_r50_fpn_1x.py', type=str, help='test config file path')
-    parser.add_argument('--checkpoint', default='work_dirs/faster_rcnn_r50_fpn_1x/epoch_12.pth', type=str, help='checkpoint file')
+    # parser.add_argument('--config', default='configs/faster_rcnn_r50_fpn_1x.py', type=str, help='test config file path')
+    parser.add_argument('--config', default='configs/fcos/fcos_r50_caffe_fpn_gn_1x_4gpu.py', type=str, help='test config file path')
+    parser.add_argument('--checkpoint', default='work_dirs/fcos_r50_caffe_fpn_gn_1x_4gpu/epoch_12.pth', type=str, help='checkpoint file')
     # parser.add_argument('--checkpoint', default='../checkpoints/faster_rcnn_r50_fpn_1x_20181010-3d1b3351.pth', type=str, help='checkpoint file')
     parser.add_argument('--out', help='output result file in pickle format')
     parser.add_argument(
         '--fuse_conv_bn',
-        action='store_true',
+        default=True, type=bool,
         help='Whether to fuse conv and bn, this will slightly increase'
         'the inference speed')
     parser.add_argument(
