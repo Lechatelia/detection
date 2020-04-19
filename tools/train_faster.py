@@ -52,9 +52,9 @@ def parse_args():
         default='pytorch',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
-    parser.add_argument(
+    parser.add_argument( # this should be checked
         '--autoscale-lr',
-        default=True, type=bool,
+        default=False, type=bool,
         help='automatically scale lr with the number of gpus')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
