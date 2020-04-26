@@ -196,7 +196,7 @@ class FCOSHead(nn.Module):
                 pos_decoded_target_preds,
                 weight=pos_centerness_targets,
                 avg_factor=pos_centerness_targets.sum())
-            loss_centerness = self.loss_centerness(pos_centerness,
+            loss_centerness = self.loss_centerness(pos_centerness, # 计算centerness loss
                                                    pos_centerness_targets)
         else:
             loss_bbox = pos_bbox_preds.sum()
@@ -215,14 +215,14 @@ class FCOSHead(nn.Module):
                    img_metas,
                    cfg,
                    rescale=None):
-        assert len(cls_scores) == len(bbox_preds)
+        assert len(cls_scores) == len(bbox_preds) # fpn层数
         num_levels = len(cls_scores)
 
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
-        mlvl_points = self.get_points(featmap_sizes, bbox_preds[0].dtype,
+        mlvl_points = self.get_points(featmap_sizes, bbox_preds[0].dtype, # 原图中投影位置
                                       bbox_preds[0].device)
         result_list = []
-        for img_id in range(len(img_metas)):
+        for img_id in range(len(img_metas)): # 分图像处理
             cls_score_list = [
                 cls_scores[i][img_id].detach() for i in range(num_levels)
             ]
@@ -231,7 +231,7 @@ class FCOSHead(nn.Module):
             ]
             centerness_pred_list = [
                 centernesses[i][img_id].detach() for i in range(num_levels)
-            ]
+            ] #list存储每一层的预测结果
             img_shape = img_metas[img_id]['img_shape']
             scale_factor = img_metas[img_id]['scale_factor']
             det_bboxes = self.get_bboxes_single(cls_score_list, bbox_pred_list,
@@ -245,25 +245,25 @@ class FCOSHead(nn.Module):
                           cls_scores,
                           bbox_preds,
                           centernesses,
-                          mlvl_points,
+                          mlvl_points, # fpn特征上面每一个点对应于原图中的位置
                           img_shape,
                           scale_factor,
                           cfg,
                           rescale=False):
-        assert len(cls_scores) == len(bbox_preds) == len(mlvl_points)
+        assert len(cls_scores) == len(bbox_preds) == len(mlvl_points) # fpn层数
         mlvl_bboxes = []
         mlvl_scores = []
         mlvl_centerness = []
         for cls_score, bbox_pred, centerness, points in zip(
-                cls_scores, bbox_preds, centernesses, mlvl_points):
-            assert cls_score.size()[-2:] == bbox_pred.size()[-2:]
+                cls_scores, bbox_preds, centernesses, mlvl_points): # 分层处理
+            assert cls_score.size()[-2:] == bbox_pred.size()[-2:] #空间大小要一致
             scores = cls_score.permute(1, 2, 0).reshape(
                 -1, self.cls_out_channels).sigmoid()
             centerness = centerness.permute(1, 2, 0).reshape(-1).sigmoid()
 
             bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 4)
             nms_pre = cfg.get('nms_pre', -1)
-            if nms_pre > 0 and scores.shape[0] > nms_pre:
+            if nms_pre > 0 and scores.shape[0] > nms_pre: # 挑选样本进行NMS
                 max_scores, _ = (scores * centerness[:, None]).max(dim=1)
                 _, topk_inds = max_scores.topk(nms_pre)
                 points = points[topk_inds, :]
@@ -274,14 +274,14 @@ class FCOSHead(nn.Module):
             mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)
             mlvl_centerness.append(centerness)
-        mlvl_bboxes = torch.cat(mlvl_bboxes)
+        mlvl_bboxes = torch.cat(mlvl_bboxes) # [num_points, 4]
         if rescale:
             mlvl_bboxes /= mlvl_bboxes.new_tensor(scale_factor)
-        mlvl_scores = torch.cat(mlvl_scores)
-        padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)
-        mlvl_scores = torch.cat([padding, mlvl_scores], dim=1)
-        mlvl_centerness = torch.cat(mlvl_centerness)
-        det_bboxes, det_labels = multiclass_nms(
+        mlvl_scores = torch.cat(mlvl_scores)# [num_points, 80]
+        padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)# [num_points, 1] 因为一般都是有一个背景类别 但是fcos实际上没有背景类别的分数
+        mlvl_scores = torch.cat([padding, mlvl_scores], dim=1) #  [num_points, 5]  shape (n, #class), where the 0th column contains scores of the background class, but this will be ignored in the NMS.
+        mlvl_centerness = torch.cat(mlvl_centerness) #[num_points]
+        det_bboxes, det_labels = multiclass_nms( # NMS
             mlvl_bboxes,
             mlvl_scores,
             cfg.score_thr,
@@ -444,7 +444,7 @@ class FCOSHead(nn.Module):
         min_area, min_area_inds = areas.min(dim=1) # 选择那个最小面积的gt作为自己的回归目标 [num_points]
 
         labels = gt_labels[min_area_inds]
-        labels[min_area == INF] = 0 # [num_points]
+        labels[min_area == INF] = 0 # [num_points] 这些位置视为背景类
         bbox_targets = bbox_targets[range(num_points), min_area_inds] # # [num_points， 4]为每一个points选择面积最小的那个目标，如果area=inf实际上就是先占位
 
         return labels, bbox_targets

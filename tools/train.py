@@ -16,23 +16,29 @@ from mmdet.datasets import build_dataset
 from mmdet.models import build_detector
 from mmdet.utils import collect_env, get_root_logger
 
-
+# python -m torch.distributed.launch --nproc_per_node=4 --master_port=29500  tools/train.py --launcher pytorch
+# this python file can be used for debugging
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('config', help='train config file path')
+    parser.add_argument('--config', default='configs/faster_rcnn_r50_fpn_1x.py', help='train config file path')
+    # parser.add_argument('--config', default='configs/pascal_voc/faster_rcnn_r50_fpn_1x_voc0712.py', help='train config file path')
+    # parser.add_argument('--config', default='configs/fcos/fcos_r50_caffe_fpn_gn_1x_4gpu.py', help='train config file path')
+    # parser.add_argument('--config', default='configs/retinanet_r50_fpn_1x.py', help='train config file path')
     parser.add_argument('--work_dir', help='the dir to save logs and models')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from')
     parser.add_argument(
         '--validate',
-        action='store_true',
+        default=True,
+        type= bool,
         help='whether to evaluate the checkpoint during training')
     group_gpus = parser.add_mutually_exclusive_group()
-    group_gpus.add_argument(
+    parser.add_argument(
         '--gpus',
         type=int,
+        default=1,
         help='number of gpus to use '
-        '(only applicable to non-distributed training)')
+             '(only applicable to non-distributed training)') # 大于1有可能调试时断点无效
     group_gpus.add_argument(
         '--gpu-ids',
         type=int,
@@ -52,7 +58,7 @@ def parse_args():
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument(
         '--autoscale-lr',
-        action='store_true',
+        default=False, type=bool,
         help='automatically scale lr with the number of gpus')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
@@ -63,7 +69,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-
+    if args.launcher == 'none':
+        args.config = '../'+args.config
     cfg = Config.fromfile(args.config)
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
@@ -85,6 +92,7 @@ def main():
     # init distributed env first, since logger depends on the dist info.
     if args.launcher == 'none':
         distributed = False
+        cfg.data['imgs_per_gpu'] =1 # 更改batch_size便于调试
     else:
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
